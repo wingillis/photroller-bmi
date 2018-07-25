@@ -1,7 +1,7 @@
 #ifndef _sinusoid_h_
 #define _sinusoid_h_
 
-#define sine_resolution 8
+#define sine_resolution 5
 
 /*
 All values correspond to one full period of a sinusoid, it is assumed that
@@ -9,9 +9,32 @@ sample hold time defines the frequency, and phase shifts correspond to shifts in
 the table index.
 */
 
-#if sine_resolution == 8
 
-uint32_t MAX_SAMPLES = 256;
+#if sine_resolution == 4
+static uint16_t SINE_TABLE[16] =
+  {
+  32768, 46095, 57119, 63932, 65356, 61145, 52028, 39580, 25955, 13507, 4390, 179,
+  1603, 8416, 19440, 32767
+  };
+
+#elif sine_resolution ==5
+static uint16_t SINE_TABLE[32] =
+  {
+  32768, 39364, 45690, 51487, 56518, 60576, 63496, 65158, 65493, 64489, 62187,
+  58680, 54112, 48670, 42577, 36083, 29452, 22958, 16865, 11423, 6855, 3348, 1046,
+  42, 377, 2039, 4959, 9017, 14048, 19845, 26171, 32767
+  };
+#elif sine_resolution == 6
+static uint16_t SINE_TABLE[64] =
+  {
+  32768, 36030, 39260, 42426, 45496, 48439, 51226, 53830, 56225, 58387, 60293,
+  61927, 63270, 64311, 65038, 65444, 65525, 65281, 64714, 63829, 62636, 61145,
+  59373, 57336, 55055, 52553, 49854, 46985, 43975, 40853, 37651, 34401, 31134,
+  27884, 24682, 21560, 18550, 15681, 12982, 10480, 8199, 6162, 4390, 2899, 1706,
+  821, 254, 10, 91, 497, 1224, 2265, 3608, 5242, 7148, 9310, 11705, 14309, 17096,
+  20039, 23109, 26275, 29505, 32767
+  };
+#elif sine_resolution == 8
 static uint16_t SINE_TABLE[256] =
   {
   32768, 33575, 34382, 35187, 35992, 36794, 37594, 38391, 39185, 39975, 40760,
@@ -40,8 +63,6 @@ static uint16_t SINE_TABLE[256] =
 };
 
 #elif sine_resolution == 10
-
-uint32_t MAX_SAMPLES = 1024;
 static uint16_t SINE_TABLE[1024] =
   {
   32768, 32969, 33170, 33371, 33572, 33774, 33975, 34176, 34377, 34578, 34779,
@@ -136,8 +157,6 @@ static uint16_t SINE_TABLE[1024] =
   };
 
 #elif sine_resolution == 12
-
-uint32_t MAX_SAMPLES = 4096;
 static uint16_t SINE_TABLE[4096] =
   {
   32768, 32969, 33170, 33371, 33572, 33774, 33975, 34176, 34377, 34578, 34779,
@@ -232,8 +251,6 @@ static uint16_t SINE_TABLE[4096] =
   };
 
 #elif sine_resolution == 16
-
-uint32_t MAX_SAMPLES = 65536;
 static uint16_t SINE_TABLE[65536] =
 {
   32768, 32771, 32774, 32777, 32780, 32783, 32786, 32789, 32793, 32796, 32799,
