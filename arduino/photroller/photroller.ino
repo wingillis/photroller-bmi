@@ -1,17 +1,22 @@
 #include "sinusoid.h"
 #include <Wire.h>
 #include <DueTimer.h>
-
-uint16_t table_idx1 = 0;
-uint16_t table_idx2 = 0;
-uint32_t start_time1 = 0;
-uint32_t start_time2 = 0;
-uint32_t max_samples;
-float sample_hold1;
-float sample_hold2;
+#include "Adafruit_ADS1015.h" // from soligen fork of adafruit_ads10x5
 
 #define DAC_ADDR 0x0C
 #define ADC_ADDR 0x48
+
+volatile uint16_t table_idx1 = 0;
+volatile uint16_t table_idx2 = 0;
+uint32_t max_samples;
+float sample_hold1;
+float sample_hold2;
+float result = 0;
+
+Adafruit_ADS1115 ads;
+const int alertPin = 2;
+
+volatile bool continuousConversionReady = false;
 
 struct parameters
 {
@@ -28,6 +33,8 @@ parameters init_parameters;
 void setup() {
   
   // Serial.begin(115200);
+  
+
   SerialUSB.begin(2000000);
   
   while(SerialUSB.available() < 1) {
@@ -41,8 +48,12 @@ void setup() {
 
   // LUDICROUS SPEED!
   
+  Wire1.begin();
+  Wire1.setClock(1000000L);
+  
   Wire.begin();
   Wire.setClock(1000000L);
+  
   
   SerialUSB.println(init_parameters.freq1);
   SerialUSB.println(init_parameters.freq2);
@@ -56,7 +67,7 @@ void setup() {
   max_samples = sizeof(SINE_TABLE) / 2;
   sample_hold1 = (1.0 / (max_samples * init_parameters.freq1)) * 1e6;
   sample_hold2 = (1.0 / (max_samples * init_parameters.freq2)) * 1e6; 
-
+  
   SerialUSB.println(sample_hold1);
   SerialUSB.println(sample_hold2);
   
@@ -64,12 +75,30 @@ void setup() {
 
   Timer1.attachInterrupt(write_sine1).start(sample_hold1); 
   Timer2.attachInterrupt(write_sine2).start(sample_hold2); 
+
+
+  // Start collecting data
+  
+  ads.begin();
+  ads.setSPS(ADS1115_DR_860SPS);   
+  ads.startContinuous_SingleEnded(0); 
+
+  pinMode(alertPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(alertPin), continuousAlert, FALLING);
+
   
 }
 
 void loop() {
+  if (continuousConversionReady) {    
+    float result = ((float) ads.getLastConversionResults()) * ads.voltsPerBit();
+    continuousConversionReady = false;
+    SerialUSB.print ("In interrupt routine. Reading is ");
+    SerialUSB.print (result,7);
+    SerialUSB.print (" at millisecond ");
+    SerialUSB.println(millis());
+  }
 }
-
 
 void read_init_values() {
 
@@ -153,24 +182,32 @@ void read_init_values() {
 
 }
 
+void continuousAlert() {
+
+// Do not call getLastConversionResults from ISR because it uses I2C library that needs interrupts
+// to make it work, interrupts would need to be re-enabled in the ISR, which is not a very good practice.
+  
+  continuousConversionReady = true;
+}
+
 
 void write_sine1() {
 
   byte lsb = (SINE_TABLE[table_idx1] / 2 & 0x00FF);
   byte msb = (SINE_TABLE[table_idx1] / 2 & 0xFF00) >> 8;
 
-  Wire.beginTransmission(DAC_ADDR);
+  Wire1.beginTransmission(DAC_ADDR);
 
   // DAC address, 48?
   
-  Wire.write(49);
-  Wire.write(msb);
+  Wire1.write(49);
+  Wire1.write(msb);
   
   if (lsb >= 0) {
-    Wire.write(lsb);
+    Wire1.write(lsb);
   }
   
-  Wire.endTransmission();
+  Wire1.endTransmission();
 
   table_idx1++;
 
@@ -186,18 +223,18 @@ void write_sine2() {
   byte lsb = (SINE_TABLE[table_idx2] / 2 & 0x00FF);
   byte msb = (SINE_TABLE[table_idx2] / 2 & 0xFF00) >> 8;
 
-  Wire.beginTransmission(DAC_ADDR);
+  Wire1.beginTransmission(DAC_ADDR);
 
   // DAC address, 48?
   
-  Wire.write(50);
-  Wire.write(msb);
+  Wire1.write(50);
+  Wire1.write(msb);
   
   if (lsb >= 0) {
-    Wire.write(lsb);
+    Wire1.write(lsb);
   }
   
-  Wire.endTransmission();
+  Wire1.endTransmission();
 
   table_idx2++;
 
@@ -206,5 +243,7 @@ void write_sine2() {
   }
   
 }
+
+
 
 

@@ -83,7 +83,6 @@ class PhotometryController():
         # initialize serial port, write in the photometry parameters
 
         self.device = init_serial_port(serial_port, **kwargs)
-
         self.photometry_parameters = photometry_parameters
 
         for k, v in self.photometry_parameters.items():
