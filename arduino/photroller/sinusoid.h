@@ -1,7 +1,7 @@
 #ifndef _sinusoid_h_
 #define _sinusoid_h_
 
-#define sine_resolution 5
+#define sine_resolution 6
 
 /*
 All values correspond to one full period of a sinusoid, it is assumed that
