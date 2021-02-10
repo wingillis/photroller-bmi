@@ -75,7 +75,6 @@ void loop() {
   }
 
   if (Serial.available() > 0) {
-    // TODO: read in new amplitude, offset, freq data
     read_init_values();
     sample_hold1 = (1.0 / (max_samples * init_parameters.freq1)) * 1e6;
     sample_hold2 = (1.0 / (max_samples * init_parameters.freq2)) * 1e6;
@@ -166,10 +165,15 @@ void read_init_values() {
 
 }
 
-void write_sine1() {
+uint16_t shape_sine(uint16_t val, uint16_t offset, uint16_t amp) {
+  uint16_t new_amp = val * (amp - offset) / 65535;
+  return new_amp + offset;
+}
 
-  byte lsb = (SINE_TABLE[table_idx1] / 2 & 0x00FF);
-  byte msb = (SINE_TABLE[table_idx1] / 2 & 0xFF00) >> 8;
+void write_sine1() {
+  uint16_t val = shape_sine(SINE_TABLE[table_idx1]);
+  byte lsb = (val / 2 & 0x00FF);
+  byte msb = (val / 2 & 0xFF00) >> 8;
 
   Wire.beginTransmission(DAC_ADDR);
 
@@ -190,9 +194,9 @@ void write_sine1() {
 }
 
 void write_sine2() {
-  
-  byte lsb = (SINE_TABLE[table_idx2] / 2 & 0x00FF);
-  byte msb = (SINE_TABLE[table_idx2] / 2 & 0xFF00) >> 8;
+  uint16_t val = shape_sine(SINE_TABLE[table_idx2]);
+  byte lsb = (val / 2 & 0x00FF);
+  byte msb = (val / 2 & 0xFF00) >> 8;
 
   Wire.beginTransmission(DAC_ADDR);
 
