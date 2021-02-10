@@ -61,7 +61,7 @@ def select_serial_port():
     return all_ports[selection].device
 
 
-def init_serial_port(serial_port=None, baudrate=2000000, parity=serial.PARITY_NONE,
+def init_serial_port(serial_port=None, baudrate=115200, parity=serial.PARITY_NONE,
                      stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS,
                      write_timeout=0):
 
@@ -70,10 +70,11 @@ def init_serial_port(serial_port=None, baudrate=2000000, parity=serial.PARITY_NO
 
     serial_device = serial.Serial(serial_port,
                                   baudrate=baudrate,
-                                  parity=parity,
-                                  stopbits=stopbits,
+                                #   parity=parity,
+                                #   stopbits=stopbits,
                                   bytesize=bytesize,
-                                  writeTimeout=write_timeout)
+                                #   writeTimeout=write_timeout
+                                  )
     return serial_device
 
 
@@ -84,23 +85,27 @@ class PhotometryController():
 
         self.device = init_serial_port(serial_port, **kwargs)
         self.photometry_parameters = photometry_parameters
+        self.write_order = ('freq1', 'freq2', 'amp1', 'amp2', 'offset1', 'offset2')
+        time.sleep(0.4)
+        self.write_parameters(self.photometry_parameters)
 
-        for k, v in self.photometry_parameters.items():
-            print('Writing {}: {}'.format(k, v))
+    def write_parameters(self, phot_params):
+        self.photometry_parameters = phot_params
+        for k in self.write_order:
+            v = self.photometry_parameters[k]
             self.write(v)
-
-        self.device.flush()
-
-        while True:
-            read_data = self.device.readline()
-            if read_data is None:
-                break
-            else:
-                print('{}'.format(read_data))
+        for k in self.write_order:
+            v = self.photometry_parameters[k]
+            print(f'Writing {k}: {v}')
+        # self.device.flush()
 
     def write(self, data):
 
-        if data.dtype == np.int16:
+        if isinstance(data, float):
+            write_data = struct.pack('<f', np.single(data))
+        elif isinstance(data, int):
+            write_data = struct.pack('<H', np.uint16(data))
+        elif data.dtype == np.uint16:
             write_data = struct.pack('<H', data)
         elif data.dtype == np.single:
             write_data = struct.pack('<f', data)
@@ -109,10 +114,3 @@ class PhotometryController():
 
     def read(self):
         return self.device.readline()
-
-
-
-
-
-    def read(self, data):
-        pass
