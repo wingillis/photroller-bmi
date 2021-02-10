@@ -1,6 +1,5 @@
 #include "sinusoid.h"
 #include <Wire.h>
-#include <DueTimer.h>
 
 #define DAC_ADDR 0x0C
 //#define ADC_ADDR 0x48
@@ -8,14 +7,8 @@
 volatile uint16_t table_idx1 = 0;
 volatile uint16_t table_idx2 = 0;
 uint32_t max_samples;
-float sample_hold1;
-float sample_hold2;
-float result = 0;
-
-//Adafruit_ADS1115 ads;
-//const int alertPin = 2;
-
-//volatile bool continuousConversionReady = false;
+unsigned long sample_hold1;
+unsigned long sample_hold2;
 
 struct parameters
 {
@@ -28,6 +21,9 @@ struct parameters
 };
 
 parameters init_parameters;
+
+unsigned long next_update1 = 0;
+unsigned long next_update2 = 0;
     
 void setup() {
 
@@ -43,13 +39,8 @@ void setup() {
   read_init_values();
 
   // LUDICROUS SPEED!
-  
-//  Wire1.begin();
-//  Wire1.setClock(1000000L);
-  
   Wire.begin();
   Wire.setClock(1000000L);
-  
   
   SerialUSB.println(init_parameters.freq1);
   SerialUSB.println(init_parameters.freq2);
@@ -66,33 +57,31 @@ void setup() {
   
   SerialUSB.println(sample_hold1);
   SerialUSB.println(sample_hold2);
-  
-  // Scheduler.startLoop(loop2);
 
-  Timer1.attachInterrupt(write_sine1).setFrequency(init_parameters.freq1).start(); 
-//  Timer2.attachInterrupt(write_sine2).setFrequency(init_parameters.freq2).start(); 
-
-
-  // Start collecting data
-  
-//  ads.begin();
-//  ads.setSPS(ADS1115_DR_860SPS);   
-//  ads.startContinuous_SingleEnded(0); 
-//
-//  pinMode(alertPin, INPUT_PULLUP);
-//  attachInterrupt(digitalPinToInterrupt(alertPin), continuousAlert, FALLING);
+  next_update1 = micros() + sample_hold1;
+  next_update2 = micros() + sample_hold2;
   
 }
 
 void loop() {
-//  if (continuousConversionReady) {    
-//    float result = ((float) ads.getLastConversionResults()) * ads.voltsPerBit();
-//    continuousConversionReady = false;
-//    SerialUSB.print ("In interrupt routine. Reading is ");
-//    SerialUSB.print (result,7);
-//    SerialUSB.print (" at millisecond ");
-//    SerialUSB.println(millis());
-//  }
+  if (micros() > next_update1) {
+    next_update1 = micros() + sample_hold1;
+    write_sine1();
+  }
+
+  if (micros() > next_update2) {
+    next_update2 = micros() + sample_hold2;
+    write_sine2();
+  }
+
+  if (Serial.available() > 0) {
+    // TODO: read in new amplitude, offset, freq data
+    read_init_values();
+    sample_hold1 = (1.0 / (max_samples * init_parameters.freq1)) * 1e6;
+    sample_hold2 = (1.0 / (max_samples * init_parameters.freq2)) * 1e6;
+    next_update1 = micros() + sample_hold1;
+    next_update2 = micros() + sample_hold2;
+  }
 }
 
 void read_init_values() {
@@ -177,15 +166,6 @@ void read_init_values() {
 
 }
 
-//void continuousAlert() {
-//
-//// Do not call getLastConversionResults from ISR because it uses I2C library that needs interrupts
-//// to make it work, interrupts would need to be re-enabled in the ISR, which is not a very good practice.
-//  
-//  continuousConversionReady = true;
-//}
-
-
 void write_sine1() {
 
   byte lsb = (SINE_TABLE[table_idx1] / 2 & 0x00FF);
@@ -198,10 +178,6 @@ void write_sine1() {
   Wire.write(0x31);
   Wire.write(msb);
   Wire.write(lsb);
-  
-//  if (lsb >= 0) {
-//    Wire1.write(lsb);
-//  }
   
   Wire.endTransmission();
 
@@ -224,10 +200,7 @@ void write_sine2() {
   
   Wire.write(0x32);
   Wire.write(msb);
-  
-  if (lsb >= 0) {
-    Wire.write(lsb);
-  }
+  Wire.write(lsb);
   
   Wire.endTransmission();
 
