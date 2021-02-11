@@ -8,7 +8,7 @@ setup(
     platforms=['mac', 'unix'],
     install_requires=['h5py', 'matplotlib', 'scipy',
                       'numpy', 'click', 'pyserial',
-                      'ruamel.yaml'],
+                      'ruamel.yaml', 'PyQt5', 'pyqtgraph'],
     python_requires='>=3.6',
     entry_points={'console_scripts': ['photroller = photroller.cli:cli']}
 )
