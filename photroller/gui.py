@@ -1,40 +1,75 @@
-import serial
+from photroller.util import PhotometryController
 from serial.tools import list_ports
-from dataclasses import dataclass
-from PyQt5.QtWidgets import QApplication, QComboBox, QWidget, QLabel, QGridLayout, QPushButton
+from dataclasses import dataclass, field
+from PyQt5.QtWidgets import QApplication, QComboBox, QMainWindow, QWidget, QLabel, QGridLayout, QPushButton
 
 @dataclass
 class GUIInfo:
-    serial_device: serial.Serial = None
+    photometry_parameters: dict = field(default_factory=lambda: dict(
+                                          freq1=150, freq2=350,
+                                          amp1=3, amp2=1,
+                                          offset1=0.1, offset2=0.1))
+    photometry_controller: PhotometryController = None
 
-gui_info = GUIInfo()
+
+class ConnectArduino(QWidget):
+    def __init__(self, gui_info, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.gui_info = gui_info
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Connect to Arduino lock-in')
+        layout = QGridLayout()
+        self.button = QPushButton('Connect')
+        refresh_b = QPushButton('Refresh')
+        self.combo = QComboBox()
+
+        layout.addWidget(QLabel('Serial ports:'), 0, 0)
+        layout.addWidget(self.combo, 0, 1)
+        layout.addWidget(self.button, 1, 1)
+        layout.addWidget(refresh_b, 1, 0)
+
+        self.button.clicked.connect(self._connect_arduino)
+        refresh_b.clicked.connect(self._refresh)
+
+        self._refresh()
+        self.setLayout(layout)
+        self.show()
+
+    def _connect_arduino(self):
+        arduino_path = self.combo.currentText()
+        self.gui_info.photometry_controller = PhotometryController(self.gui_info.photometry_parameters,
+                                                                   arduino_path)
+        self.close()
+
+    def _refresh(self):
+        self.combo.clear()
+        self.combo.addItems([port.device for port in list_ports.comports()])
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.gui_info = GUIInfo()
+        self.initUI()
+
+    def initUI(self):
+        # populate with graphs and options for graphs
+        # place to save file
+        # lock-in parameters
+        self.setWindowTitle('Photometry BMI')
+
+        self.show()
+
+        if self.gui_info.photometry_controller is None:
+            # open new window and show
+            self.connector = ConnectArduino(self.gui_info)
+
 
 app = QApplication([])
 
-window = QWidget()
-
-layout = QGridLayout()
-layout.addWidget(QLabel('Serial ports:'), 0, 0)
-
-combo = QComboBox()
-all_ports = list_ports.comports()
-combo.addItems([port.device for port in all_ports])
-layout.addWidget(combo, 0, 1)
-
-button = QPushButton('Connect')
-layout.addWidget(button, 1, 1)
-
-window.setLayout(layout)
-window.show()
-
-def connect_arduino():
-    arduino_path = combo.currentText()
-    serial_device = serial.Serial(arduino_path,
-                                  baudrate=115200,
-                                  bytesize=serial.EIGHTBITS)
-    gui_info.serial_device = serial_device
-    
-button.clicked.connect(connect_arduino)
+window = MainWindow()
 
 app.exec()
 
