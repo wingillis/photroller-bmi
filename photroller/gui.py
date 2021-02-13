@@ -1,7 +1,7 @@
 from photroller.util import PhotometryController
 from serial.tools import list_ports
 from dataclasses import dataclass, field
-from PyQt5.QtWidgets import QApplication, QComboBox, QLineEdit, QWidget, QLabel, QGridLayout, QPushButton
+from PySide6.QtWidgets import QApplication, QWidget, QComboBox, QLabel, QGridLayout, QPushButton, QLineEdit
 
 @dataclass
 class GUIInfo:
@@ -65,7 +65,7 @@ class PhotometryParams(QWidget):
             self.params[k].setText(str(v))
             layout.addWidget(self.params[k], i, 1)
 
-        # TODO: add button 
+        # TODO: add button to write parameters to arduino
         self.setLayout(layout)
 
 
@@ -96,5 +96,5 @@ app = QApplication([])
 
 window = MainWindow()
 
-app.exec()
+app.exec_()
 
