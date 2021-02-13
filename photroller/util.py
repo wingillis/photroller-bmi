@@ -82,6 +82,8 @@ class PhotometryController():
 
     def __init__(self, photometry_parameters, serial_port=None, **kwargs):
         # initialize serial port, write in the photometry parameters
+        if serial_port is not None:
+            self.serial_port = serial_port
 
         self.device = init_serial_port(serial_port, **kwargs)
         self.photometry_parameters = photometry_parameters

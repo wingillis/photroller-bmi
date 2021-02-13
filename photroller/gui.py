@@ -1,7 +1,7 @@
 from photroller.util import PhotometryController
 from serial.tools import list_ports
 from dataclasses import dataclass, field
-from PyQt5.QtWidgets import QApplication, QComboBox, QMainWindow, QWidget, QLabel, QGridLayout, QPushButton
+from PyQt5.QtWidgets import QApplication, QComboBox, QLineEdit, QWidget, QLabel, QGridLayout, QPushButton
 
 @dataclass
 class GUIInfo:
@@ -48,18 +48,43 @@ class ConnectArduino(QWidget):
         self.combo.addItems([port.device for port in list_ports.comports()])
 
 
-class MainWindow(QMainWindow):
+class PhotometryParams(QWidget):
+    def __init__(self, gui_info: GUIInfo, **kwargs) -> None:
+        self.units = ('Hz', 'Hz', 'V', 'V', 'V', 'V')
+        super().__init__(**kwargs)
+        self.gui_info = gui_info
+        self.params = {}
+        self.initUI()
+
+    def initUI(self):
+        layout = QGridLayout()
+
+        for i, (k, v) in enumerate(self.gui_info.photometry_parameters.items()):
+            layout.addWidget(QLabel(f'{k} ({self.units[i]})'), i, 0)
+            self.params[k] = QLineEdit()
+            self.params[k].setText(str(v))
+            layout.addWidget(self.params[k], i, 1)
+
+        # TODO: add button 
+        self.setLayout(layout)
+
+
+class MainWindow(QWidget):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.gui_info = GUIInfo()
         self.initUI()
 
     def initUI(self):
+        layout = QGridLayout()
         # populate with graphs and options for graphs
         # place to save file
         # lock-in parameters
         self.setWindowTitle('Photometry BMI')
+        self.phot_params = PhotometryParams(self.gui_info)
+        layout.addWidget(self.phot_params, 0, 0)
 
+        self.setLayout(layout)
         self.show()
 
         if self.gui_info.photometry_controller is None:
