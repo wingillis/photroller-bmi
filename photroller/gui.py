@@ -1,13 +1,17 @@
 import PySide6
 import datetime
 import numpy as np
+import pyqtgraph as pg
 from os.path import basename
 from labjack import ljm
 from serial.tools import list_ports
 from dataclasses import dataclass, field
 from photroller.util import PhotometryController
 from PySide6.QtWidgets import QApplication, QFileDialog, QPlainTextEdit, QVBoxLayout, QWidget, QComboBox, QLabel, QGridLayout, QPushButton, QLineEdit
-import pyqtgraph as pg
+from photroller.bmi_process import stream
+
+# TODO:
+# - add session length, to automatically stop recording
 
 # class to store global parameters shared across all windows
 @dataclass
@@ -192,6 +196,12 @@ class MainWindow(QWidget):
         self.sine_ = w
         w2 = pg.PlotWidget(title="Signal")
         layout.addWidget(w2, 1, 0, 1, 3)
+        self.signal_ = w2
+
+        button = QPushButton('Start streaming')
+        button.setMaximumHeight(30)
+        button.clicked.connect(self._record_data)
+        layout.addWidget(button, 2, 2)
 
         self.setLayout(layout)
         self.show()
@@ -203,7 +213,7 @@ class MainWindow(QWidget):
             self.labjack_connector = ConnectLabJack(self.gui_info)
     
     def _record_data(self):
-        pass
+        stream(self.gui_info.labjack, self.gui_info, {'sine': self.sine_, 'signal': self.signal_})
 
 
 if __name__ == "__main__":
