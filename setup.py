@@ -7,7 +7,8 @@ setup(
     version='0.002a',
     platforms=['mac', 'unix'],
     install_requires=['h5py', 'scipy', 'numpy', 'click', 'pyserial',
-                      'ruamel.yaml', 'PySide6', 'pyqtgraph'],
+                      'ruamel.yaml', 'PySide6', 'labjack-ljm',
+                      'git+https://github.com/pyqtgraph/pyqtgraph@master'],
     python_requires='>=3.6',
     entry_points={'console_scripts': ['photroller = photroller.cli:cli']}
 )
