@@ -1,9 +1,10 @@
 import numpy as np
+import multiprocess as mp
 from labjack import ljm
 # eventually, add another process to send over raw photometry data
 # for saving
 
-#TODO: I don't think this code is functioning correctly because it's
+# TODO: I don't think this code is functioning correctly because it's
 # running on pyqt's main thread. Try using QRunnable, QThread, or QProcess
 # https://stackoverflow.com/questions/47560399/run-function-in-the-background-and-update-ui
 
@@ -31,3 +32,29 @@ def stream(handle, gui_info, plot_widgets):
         # signal_plot.clear()
         # signal_plot.plot(y=data[:, 2])
         # signal_plot.plot(y=data[:, 3])
+
+
+class Stream(mp.Process):
+    def __init__(self, queue, shutdown_event, gui_info) -> None:
+        super().__init__()
+        self.queue = queue
+        self.gui_info = gui_info
+        self.handle = gui_info.labjack
+        self.shutdown_event = shutdown_event
+
+    def run(self):
+        scan_list = self.gui_info.scan_list
+        scans_per_read = self.gui_info.scans_per_read
+        scan_rate = self.gui_info.scan_rate
+        n_ports = len(scan_list)
+
+        new_scan_rate = ljm.eStreamStart(self.handle, scans_per_read, n_ports,
+                                         scan_list, scan_rate)
+        print('New scanning rate is:', new_scan_rate)
+        while not self.shutdown_event.is_set():
+            data = ljm.eStreamRead(self.handle)[0]
+            data = [data[i::n_ports] for i in range(n_ports)]
+            data = np.array(data)
+            self.queue.put(data)
+        ljm.eStreamStop(self.handle)
+        ljm.close(self.handle)

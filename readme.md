@@ -1,6 +1,6 @@
 
 Run this command in your terminal
-pip install git+https://github.com/pyqtgraph/pyqtgraph.git@pyqtgraph-0.11.1
+pip install git+https://github.com/pyqtgraph/pyqtgraph.git@master
 
-make sure your udev rules allow you to write to connect arduinos
+make sure your udev rules allow you to write to connected arduinos
 

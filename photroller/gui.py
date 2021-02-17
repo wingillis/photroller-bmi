@@ -2,16 +2,18 @@ import PySide6
 import datetime
 import numpy as np
 import pyqtgraph as pg
+import multiprocess as mp
 from os.path import basename
-from labjack import ljm
-from serial.tools import list_ports
 from dataclasses import dataclass, field
 from photroller.util import PhotometryController
-from PySide6.QtWidgets import QApplication, QFileDialog, QPlainTextEdit, QVBoxLayout, QWidget, QComboBox, QLabel, QGridLayout, QPushButton, QLineEdit
-from photroller.bmi_process import stream
+from PySide6.QtWidgets import QApplication, QFileDialog, QPlainTextEdit, QWidget, QLabel, QGridLayout, QPushButton, QLineEdit
+from PySide6.QtCore import QRunnable, QThreadPool, Signal, QObject, Slot
+from photroller.bmi_process import Stream
+from photroller.gui.connections import ConnectArduino, ConnectLabJack
 
 # TODO:
 # - add session length, to automatically stop recording
+
 
 # class to store global parameters shared across all windows
 @dataclass
@@ -24,94 +26,14 @@ class GUIInfo:
     labjack = None
     scan_rate: int = 5000  # samples per second
     labjack_init_params = None
-    scans_per_read: int = 2500  # samples 
+    scans_per_read: int = 2500  # samples
     scan_list = None
     save_path: str = field(default_factory=lambda: datetime.datetime.now().strftime('photometry_session_%Y%m%dT%H%M%S-%f.h5'))
 
 
-class ConnectArduino(QWidget):
-    def __init__(self, gui_info, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.gui_info = gui_info
-        self.initUI()
-
-    def initUI(self):
-        self.setWindowTitle('Connect to Arduino lock-in')
-        layout = QGridLayout()
-        self.button = QPushButton('Connect')
-        refresh_b = QPushButton('Refresh')
-        self.combo = QComboBox()
-
-        layout.addWidget(QLabel('Serial ports:'), 0, 0)
-        layout.addWidget(self.combo, 0, 1)
-        layout.addWidget(self.button, 1, 1)
-        layout.addWidget(refresh_b, 1, 0)
-
-        self.button.clicked.connect(self._connect_arduino)
-        refresh_b.clicked.connect(self._refresh)
-
-        self._refresh()
-        self.setLayout(layout)
-        self.show()
-
-    def _connect_arduino(self):
-        arduino_path = self.combo.currentText()
-        self.gui_info.photometry_controller = PhotometryController(self.gui_info.photometry_parameters,
-                                                                   arduino_path)
-        self.close()
-
-    def _refresh(self):
-        self.combo.clear()
-        self.combo.addItems([port.device for port in list_ports.comports()])
-
-
-class ConnectLabJack(QWidget):
-    def __init__(self, gui_info: GUIInfo, **kwargs):
-        super().__init__(**kwargs)
-        self.gui_info = gui_info
-        self.initUI()
-
-    def initUI(self):
-        self.setWindowTitle('Connect to LabJack for data stream')
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel('Connect a LabJack to this computer and click connect'))
-        button = QPushButton('Connect')
-        button.clicked.connect(self._connect_labjack)
-        layout.addWidget(button)
-        self.setLayout(layout)
-
-        self.show()
-
-    def _connect_labjack(self):
-        handle = ljm.openS('T7', 'ANY', 'ANY')
-        self.gui_info.labjack = handle
-        info = ljm.getHandleInfo(handle)
-        print(f'Labjack device type {info[0]}; connection type {info[1]}')
-        print(f'Serial number {info[2]}; IP address {ljm.numberToIP(info[3])}')
-        print(f'Port: {info[4]}; Max bytes per MB: {info[5]}')
-        # two sinusoids, two pmt signals
-        analog_in_names = [f'AIN{num}' for num in range(4)]
-        scan_list = ljm.namesToAddresses(len(analog_in_names), analog_in_names)[0]
-        self.gui_info.scan_list = scan_list
-
-        # disable triggered stream
-        ljm.eWriteName(handle, 'STREAM_TRIGGER_INDEX', 0)
-        # enable internally clocked stream
-        ljm.eWriteName(handle, 'STREAM_CLOCK_SOURCE', 0)
-        init_params = {
-            'STREAM_TRIGGER_INDEX': 0,
-            'STREAM_CLOCK_SOURCE': 0,
-            'STREAM_RESOLUTION_INDEX': 0,
-            'STREAM_SETTLING_US': 0,
-            'AIN_ALL_NEGATIVE_CH': ljm.constants.GND
-        }
-        for i in range(4):
-            init_params[f'AIN{i}_RANGE'] = 10.0
-        self.gui_info.labjack_init_params = init_params
-
-        ljm.eWriteNames(handle, len(init_params), list(init_params), list(init_params.values()))
-
-        self.close()
+class PhotometryUpdateSignal(QObject):
+    new_data = Signal(object)
+    stop_stream = Signal()
 
 
 class SessionParams(QWidget):
@@ -157,6 +79,7 @@ class SessionParams(QWidget):
         self.notes = QPlainTextEdit()
         self.notes.setPlaceholderText('Add notes here...')
         layout.addWidget(self.notes, i, 0, 1, 2)
+        self.setMaximumWidth(440)
 
         self.setLayout(layout)
 
@@ -165,14 +88,33 @@ class SessionParams(QWidget):
         for k, v in self.params.items():
             for c, cv in converter.items():
                 if c in k:
-                    res = cv(float(v.getText()))
+                    res = cv(float(v.text()))
                     self.gui_info.photometry_parameters[k] = res
         self.gui_info.photometry_controller.write_parameters(self.gui_info.photometry_parameters)
 
     def _set_savefile(self):
-        save_path, _ = QFileDialog.getSaveFileName(self, 'Save file...', self.gui_info.save_path, selectedFilter='*.h5')
+        save_path, _ = QFileDialog.getSaveFileName(self, 'Save file...', self.gui_info.save_path,
+                                                   selectedFilter='*.h5')
         self.gui_info.save_path = save_path
         self.filepath.setText(basename(save_path))
+
+
+class PhotometryWorker(QRunnable):
+
+    def __init__(self, gui_info, shutdown_event) -> None:
+        super().__init__()
+        self.gui_info = gui_info
+        self.signals = PhotometryUpdateSignal()
+        self.queue = mp.Queue()
+        self.shutdown_event = shutdown_event
+
+    @Slot()
+    def run(self):
+        process = Stream(self.queue, self.shutdown_event, self.gui_info)
+        process.start()
+        while not self.shutdown_event.is_set():
+            data = self.queue.get(block=True, timeout=None)
+            self.signals.new_data.emit(data)
 
 
 class MainWindow(QWidget):
@@ -180,6 +122,8 @@ class MainWindow(QWidget):
         super().__init__(**kwargs)
         self.gui_info = GUIInfo()
         self.initUI()
+        self.recording = False
+        self.shutdown_event = mp.Event()
 
     def initUI(self):
         layout = QGridLayout()
@@ -211,9 +155,28 @@ class MainWindow(QWidget):
             self.connector = ConnectArduino(self.gui_info)
         if self.gui_info.labjack is None:
             self.labjack_connector = ConnectLabJack(self.gui_info)
+
+        self.threadpool = QThreadPool()
+
+    def update_plots(self, data):
+        self.sine_.clear()
+        self.sine_.plot(y=data[0], pen={'color': 'r'})
+        self.sine_.plot(y=data[1], pen={'color': 'c'})
+
+        self.signal_.clear()
+        self.signal_.plot(y=data[2], pen={'color': 'r'})
+        self.signal_.plot(y=data[3], pen={'color': 'c'})
     
     def _record_data(self):
-        stream(self.gui_info.labjack, self.gui_info, {'sine': self.sine_, 'signal': self.signal_})
+        if not self.recording:
+            worker = PhotometryWorker(self.gui_info, self.shutdown_event)
+            worker.signals.new_data.connect(self.update_plots)
+            self.threadpool.start(worker)
+            self.recording = True
+
+    def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
+        self.shutdown_event.set()
+        return super().closeEvent(event)
 
 
 if __name__ == "__main__":
