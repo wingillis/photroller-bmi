@@ -13,6 +13,7 @@ from photroller.gui.connections import ConnectArduino, ConnectLabJack
 
 # TODO:
 # - add session length, to automatically stop recording
+# - add capability to stream without recording
 # - add stop recording button
 # - add online lock-in filter
 
@@ -36,7 +37,7 @@ class GUIInfo:
     scan_list = None
     saving_parameters: dict = field(default_factory=lambda: dict(
         save_path=_savepath_generator(),
-        duration=30
+        duration=30  # minutes
     ))
 
 

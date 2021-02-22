@@ -65,7 +65,7 @@ class ConnectLabJack(QWidget):
         print(f'Serial number {info[2]}; IP address {ljm.numberToIP(info[3])}')
         print(f'Port: {info[4]}; Max bytes per MB: {info[5]}')
         # two sinusoids, two pmt signals
-        analog_in_names = [f'AIN{num}' for num in range(4)]
+        analog_in_names = [f'AIN{num}' for num in range(4)] + ['FIO_STATE']
         scan_list = ljm.namesToAddresses(len(analog_in_names), analog_in_names)[0]
         self.gui_info.scan_list = scan_list
 
@@ -73,17 +73,20 @@ class ConnectLabJack(QWidget):
         ljm.eWriteName(handle, 'STREAM_TRIGGER_INDEX', 0)
         # enable internally clocked stream
         ljm.eWriteName(handle, 'STREAM_CLOCK_SOURCE', 0)
+        # Configure FIO 0-3
         init_params = {
             'STREAM_TRIGGER_INDEX': 0,
             'STREAM_CLOCK_SOURCE': 0,
-            'STREAM_RESOLUTION_INDEX': 0,
+            'STREAM_RESOLUTION_INDEX': 0,  # increase this to increase resolution
             'STREAM_SETTLING_US': 0,
-            'AIN_ALL_NEGATIVE_CH': ljm.constants.GND
+            'AIN_ALL_NEGATIVE_CH': ljm.constants.GND,
+            'FIO_DIRECTION': 0xF000
         }
         for i in range(4):
             init_params[f'AIN{i}_RANGE'] = 10.0
-        self.gui_info.labjack_init_params = init_params
 
         ljm.eWriteNames(handle, len(init_params), list(init_params), list(init_params.values()))
+
+        self.gui_info.labjack_init_params = init_params
 
         self.close()
