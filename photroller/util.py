@@ -41,7 +41,7 @@ def init_serial_port(serial_port=None, baudrate=115200, parity=serial.PARITY_NON
     return serial_device
 
 
-class PhotometryController():
+class PhotometryController:
 
     def __init__(self, photometry_parameters, serial_port=None, **kwargs):
         # initialize serial port, write in the photometry parameters

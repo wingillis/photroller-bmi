@@ -170,9 +170,10 @@ class MainWindow(QWidget):
         self.sine_.plot(y=data[0], pen={'color': 'r'})
         self.sine_.plot(y=data[1], pen={'color': 'c'})
 
+        # plot demodulated data
         self.signal_.clear()
-        self.signal_.plot(y=data[2], pen={'color': 'r'})
-        self.signal_.plot(y=data[3], pen={'color': 'c'})
+        self.signal_.plot(y=data[4], pen={'color': 'r'})
+        self.signal_.plot(y=data[5], pen={'color': 'c'})
 
     def _record_data(self):
         if not self.recording:
