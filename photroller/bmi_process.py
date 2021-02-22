@@ -21,20 +21,27 @@ class IO(Thread):
         n_ports = len(self.gui_info.scan_list)
         with h5py.File(self.gui_info.saving_parameters['save_path'], 'a') as h5f:
             # OPTION: if computer too slow, change compression from gzip to lzf or nothing
-            dset = h5f.create_dataset('raw_photometry', shape=(spr, n_ports),
-                                      maxshape=(None, n_ports), dtype=np.float32,
-                                      chunks=(spr, n_ports), compression='gzip',
+            dset = h5f.create_dataset('raw_photometry', shape=(spr, n_ports - 1),
+                                      maxshape=(None, n_ports - 1), dtype=np.float32,
+                                      chunks=(spr, n_ports - 1), compression='gzip',
                                       compression_opts=3)
+            dio = h5f.create_dataset('digital_io', shape=(spr, ),
+                                     maxshape=(None, ), dtype=np.uint16,
+                                     chunks=(spr, ), compression='gzip', compression_opts=3)
             offset = 0
-            while not self.shutdown_event.is_set():
+            while not self.shutdown_event.is_set() or not self.queue.empty():
                 data = self.queue.get(block=True, timeout=None)
                 start = time.time()
                 data = data.T
                 dset.resize(offset + len(data), axis=0)
-                dset[offset:offset + len(data)] = data
+                dset[offset:offset + len(data)] = data[:, :-1]
+                dio.resize(offset + len(data), axis=0)
+                dio[offset:offset + len(data)] = data[:, -1]
                 stop = time.time()
                 offset += len(data)
-                print('h5 write time:', round(stop - start, 5), 's')
+                print('h5 write time:', round(stop - start, 5), 's', end='\r')
+        print()
+        print('Stream over, cleaning up h5 file')
 
 
 class Stream(mp.Process):

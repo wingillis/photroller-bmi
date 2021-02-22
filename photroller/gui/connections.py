@@ -77,7 +77,7 @@ class ConnectLabJack(QWidget):
         init_params = {
             'STREAM_TRIGGER_INDEX': 0,
             'STREAM_CLOCK_SOURCE': 0,
-            'STREAM_RESOLUTION_INDEX': 0,  # increase this to increase resolution
+            'STREAM_RESOLUTION_INDEX': 4,  # increase this to increase resolution
             'STREAM_SETTLING_US': 0,
             'AIN_ALL_NEGATIVE_CH': ljm.constants.GND,
             'FIO_DIRECTION': 0xF000

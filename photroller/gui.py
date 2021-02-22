@@ -1,3 +1,4 @@
+import os
 import PySide6
 import datetime
 import numpy as np
@@ -7,14 +8,12 @@ from os.path import basename, dirname, join
 from dataclasses import dataclass, field
 from photroller.util import PhotometryController
 from PySide6.QtWidgets import QApplication, QFileDialog, QPlainTextEdit, QWidget, QLabel, QGridLayout, QPushButton, QLineEdit
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, QSettings
 from photroller.gui.workers import PhotometryWorker
 from photroller.gui.connections import ConnectArduino, ConnectLabJack
 
 # TODO:
-# - add session length, to automatically stop recording
 # - add capability to stream without recording
-# - add stop recording button
 # - add online lock-in filter
 
 
@@ -26,14 +25,14 @@ def _savepath_generator():
 @dataclass
 class GUIInfo:
     photometry_parameters: dict = field(default_factory=lambda: dict(
-                                          freq1=150, freq2=350,
+                                          freq1=101, freq2=237,
                                           amp1=3, amp2=1,
                                           offset1=0.1, offset2=0.1))
     photometry_controller: PhotometryController = None
     labjack = None
-    scan_rate: int = 5000  # samples per second
+    scan_rate: int = 3000  # samples per second
     labjack_init_params = None
-    scans_per_read: int = 2500  # samples
+    scans_per_read: int = 1500  # samples
     scan_list = None
     saving_parameters: dict = field(default_factory=lambda: dict(
         save_path=_savepath_generator(),
@@ -95,6 +94,7 @@ class SessionParams(QWidget):
         self.setLayout(layout)
 
     def _update_params(self):
+        # TODO: update settings file
         converter = {'freq': np.uint16, 'amp': np.single, 'offset': np.single}
         for k, v in self.params.items():
             for c, cv in converter.items():
@@ -104,6 +104,7 @@ class SessionParams(QWidget):
         self.gui_info.photometry_controller.write_parameters(self.gui_info.photometry_parameters)
 
     def _set_savefile(self):
+        # TODO: update settings file
         save_path, _ = QFileDialog.getSaveFileName(self, 'Save file...',
                                                    self.gui_info.saving_parameters['save_path'],
                                                    selectedFilter='*.h5')
@@ -126,6 +127,8 @@ class SessionParams(QWidget):
 class MainWindow(QWidget):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
+        self.settings = QSettings(os.path.abspath(__file__), QSettings.IniFormat)
+        # convert settings into things GUIInfo cares about
         self.gui_info = GUIInfo()
         self.initUI()
         self.recording = False
@@ -149,6 +152,7 @@ class MainWindow(QWidget):
         button.setMaximumHeight(30)
         button.clicked.connect(self._record_data)
         layout.addWidget(button, 2, 2)
+        self.stream_button = button
 
         self.setLayout(layout)
         self.show()
@@ -172,13 +176,16 @@ class MainWindow(QWidget):
 
     def _record_data(self):
         if not self.recording:
-            # self.phot_params._update_params()
+            self.shutdown_event.clear()
             self.phot_params._update_save_parameters()
             worker = PhotometryWorker(self.gui_info, self.shutdown_event)
             worker.signals.new_data.connect(self.update_plots)
             worker.signals.stop_stream.connect(self.stop_stream)
             self.threadpool.start(worker)
             self.recording = True
+            self.stream_button.setText('Stop streaming')
+        else:
+            self.stop_stream()
 
     def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
         self.shutdown_event.set()
@@ -187,6 +194,8 @@ class MainWindow(QWidget):
     def stop_stream(self):
         self.shutdown_event.set()
         self.phot_params.reset_filepath()
+        self.recording = False
+        self.stream_button.setText('Start streaming')
 
 
 if __name__ == "__main__":
