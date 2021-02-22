@@ -8,7 +8,7 @@ setup(
     platforms=['mac', 'unix'],
     install_requires=['h5py', 'scipy', 'numpy', 'click', 'pyserial',
                       'ruamel.yaml', 'PySide6', 'labjack-ljm',
-                      'multiprocess'],
+                      'multiprocess', 'toolz'],
     python_requires='>=3.6',
     entry_points={'console_scripts': ['photroller = photroller.cli:cli']}
 )

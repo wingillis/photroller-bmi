@@ -1,37 +1,40 @@
+import time
+import h5py
 import numpy as np
 import multiprocess as mp
 from labjack import ljm
+from threading import Thread
+from queue import Queue
 # eventually, add another process to send over raw photometry data
 # for saving
 
-# TODO: I don't think this code is functioning correctly because it's
-# running on pyqt's main thread. Try using QRunnable, QThread, or QProcess
-# https://stackoverflow.com/questions/47560399/run-function-in-the-background-and-update-ui
 
-def stream(handle, gui_info, plot_widgets):
-    scan_list = gui_info.scan_list
-    n_ports = len(scan_list)
-    new_scan_rate = ljm.eStreamStart(handle, gui_info.scans_per_read,
-                                     n_ports, scan_list, gui_info.scan_rate)
+class IO(Thread):
+    def __init__(self, gui_info, queue, shutdown_event):
+        super().__init__()
+        self.queue = queue
+        self.gui_info = gui_info
+        self.shutdown_event = shutdown_event
 
-    sine_plot = plot_widgets['sine']
-    sine1 = sine_plot.plot()
-    sine2 = sine_plot.plot()
-    signal_plot = plot_widgets['signal']
-    # TODO: make smarter, and/or conditional
-    while True:
-        # don't need the other information for now
-        data = ljm.eStreamRead(handle)[0]
-        data = np.array(data).reshape(-1, n_ports)
-        # first 2, plot in the sine plot
-        sine_plot.clear()
-        sine1.setData(y=data[:, 0])
-        sine2.setData(y=data[:, 1])
-
-        # next 2, plot in the signal plot
-        # signal_plot.clear()
-        # signal_plot.plot(y=data[:, 2])
-        # signal_plot.plot(y=data[:, 3])
+    def run(self):
+        spr = self.gui_info.scans_per_read
+        n_ports = len(self.gui_info.scan_list)
+        with h5py.File(self.gui_info.saving_parameters['save_path'], 'a') as h5f:
+            # OPTION: if computer too slow, change compression from gzip to lzf or nothing
+            dset = h5f.create_dataset('raw_photometry', shape=(spr, n_ports),
+                                      maxshape=(None, n_ports), dtype=np.float32,
+                                      chunks=(spr, n_ports), compression='gzip',
+                                      compression_opts=3)
+            offset = 0
+            while not self.shutdown_event.is_set():
+                data = self.queue.get(block=True, timeout=None)
+                start = time.time()
+                data = data.T
+                dset.resize(offset + len(data), axis=0)
+                dset[offset:offset + len(data)] = data
+                stop = time.time()
+                offset += len(data)
+                print('h5 write time:', round(stop - start, 5), 's')
 
 
 class Stream(mp.Process):
@@ -47,14 +50,19 @@ class Stream(mp.Process):
         scans_per_read = self.gui_info.scans_per_read
         scan_rate = self.gui_info.scan_rate
         n_ports = len(scan_list)
+        io_queue = Queue()
+        io_thread = IO(self.gui_info, io_queue, self.shutdown_event)
+        io_thread.start()
 
         new_scan_rate = ljm.eStreamStart(self.handle, scans_per_read, n_ports,
                                          scan_list, scan_rate)
         print('New scanning rate is:', new_scan_rate)
+
         while not self.shutdown_event.is_set():
             data = ljm.eStreamRead(self.handle)[0]
             data = [data[i::n_ports] for i in range(n_ports)]
-            data = np.array(data)
+            data = np.array(data, dtype=np.float32)
             self.queue.put(data)
+            io_queue.put(data)
         ljm.eStreamStop(self.handle)
         ljm.close(self.handle)

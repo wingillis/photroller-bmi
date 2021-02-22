@@ -3,6 +3,7 @@ from serial.tools import list_ports
 from photroller.util import PhotometryController
 from PySide6.QtWidgets import QWidget, QPushButton, QGridLayout, QComboBox, QLabel, QVBoxLayout
 
+
 class ConnectArduino(QWidget):
     def __init__(self, gui_info, **kwargs) -> None:
         super().__init__(**kwargs)

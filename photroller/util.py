@@ -1,47 +1,10 @@
+import h5py
 import click
 import serial
 import struct
-import numpy as np
 import time
+import numpy as np
 from serial.tools import list_ports
-
-
-# from https://stackoverflow.com/questions/46358797/
-# python-click-supply-arguments-and-options-from-a-configuration-file
-def command_with_config(config_file_param_name):
-
-    class custom_command_class(click.Command):
-
-        def invoke(self, ctx):
-            # grab the config file
-            config_file = ctx.params[config_file_param_name]
-            param_defaults = {p.human_readable_name: p.default for p in self.params
-                              if isinstance(p, click.core.Option)}
-            param_defaults = {k: tuple(v) if type(v) is list else v for k, v in param_defaults.items()}
-            param_cli = {k: tuple(v) if type(v) is list else v for k, v in ctx.params.items()}
-
-            if config_file is not None:
-                with open(config_file) as f:
-                    config_data = dict(yaml.load(f, yaml.RoundTripLoader))
-                config_data = {k: tuple(v) if isinstance(v, yaml.comments.CommentedSeq) else v
-                               for k, v in config_data.items() if k in param_defaults.keys()}
-
-                # find differences btw config and param defaults
-                diffs = set(param_defaults.items()) ^ set(param_cli.items())
-
-                # combine defaults w/ config data
-                combined = {**param_defaults, **config_data}
-
-                # update cli params that are non-default
-                keys = [d[0] for d in diffs]
-                for k in set(keys):
-                    combined[k] = ctx.params[k]
-
-                ctx.params = combined
-
-            return super().invoke(ctx)
-
-    return custom_command_class
 
 
 def select_serial_port():
@@ -116,3 +79,41 @@ class PhotometryController():
 
     def read(self):
         return self.device.readline()
+
+
+def dict_to_h5(h5, dic, root='/'):
+    '''
+    Save an dict to an h5 file, mounting at root.
+    Keys are mapped to group names recursively.
+    Parameters
+    ----------
+    h5 (h5py.File instance): h5py.file object to operate on
+    dic (dict): dictionary of data to write
+    root (string): group on which to add additional groups and datasets
+    Returns
+    -------
+    None
+    '''
+
+    if not root.endswith('/'):
+        root = root + '/'
+
+    for key, item in dic.items():
+        dest = root + key
+        try:
+            if isinstance(item, (np.ndarray, np.int64, np.float64, str, bytes)):
+                h5[dest] = item
+            elif isinstance(item, (tuple, list)):
+                h5[dest] = np.asarray(item)
+            elif isinstance(item, (int, float)):
+                h5[dest] = np.asarray([item])[0]
+            elif item is None:
+                h5.create_dataset(dest, data=h5py.Empty(dtype=h5py.special_dtype(vlen=str)))
+            elif isinstance(item, dict):
+                dict_to_h5(h5, item, dest)
+            else:
+                raise ValueError('Cannot save {} type to key {}'.format(type(item), dest))
+        except Exception as e:
+            print(e)
+            if key != 'inputs':
+                print('h5py could not encode key:', key)

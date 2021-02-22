@@ -1,6 +1,6 @@
 import click
 import numpy as np
-from photroller.util import PhotometryController, command_with_config
+from photroller.util import PhotometryController
 
 orig_init = click.core.Option.__init__
 
@@ -18,7 +18,7 @@ def cli():
     pass
 
 
-@cli.command(name="start-controller", cls=command_with_config('config_file'))
+@cli.command(name="start-controller")
 @click.option("--freq1", "-f1", default=150, type=np.uint16, help="Frequency for LED1")
 @click.option("--freq2", "-f2", default=350, type=np.uint16, help="Frequency for LED2")
 @click.option("--amp1", "-a1", default=3, type=np.single, help="Amplitude for LED1")
@@ -26,8 +26,7 @@ def cli():
 @click.option("--offset1", "-o1", default=.1, type=np.single, help="Offset for LED1")
 @click.option("--offset2", "-o2", default=.1, type=np.single, help="Offset for LED2")
 @click.option("--serial-port", "-s", default=None, help="Serial port of Arduino")
-@click.option("--config-file", type=click.Path())
-def generate_config(serial_port, config_file, **photometry_parameters):
+def generate_config(serial_port, **photometry_parameters):
 
     controller = PhotometryController(photometry_parameters, serial_port)
 
