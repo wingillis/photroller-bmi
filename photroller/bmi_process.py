@@ -8,6 +8,7 @@ from queue import Queue
 from threading import Thread
 from scipy import signal
 from hyphyber.util.sig import is_filter_stable
+from functools import reduce
 # eventually, add another process to send over raw photometry data
 # for saving
 
@@ -33,6 +34,19 @@ def demodulate(data, ref_x, bp_filter, lp_filter, lowpass=False):
     return np.hypot(np.sqrt(out_x), np.sqrt(out_y))
 
 
+def _concat(agg, segment):
+    for a, s in zip(agg, segment):
+        a.extend(s)
+    return agg
+
+
+def concatenate(cache):
+    # concat each datastream within the cache
+    _in = [list() for _ in range(len(cache[0]))]
+    out = reduce(_concat, cache, _in)
+    return out
+
+
 class IO(Thread):
     def __init__(self, gui_info, queue, shutdown_event):
         super().__init__()
@@ -56,22 +70,25 @@ class IO(Thread):
             offset = 0
             while not self.shutdown_event.is_set() or not self.queue.empty():
                 data = self.queue.get(block=True, timeout=None)
-                start = time.time()
                 data = data.T
                 dset.resize(offset + len(data), axis=0)
                 dset[offset:offset + len(data)] = data[:, :-1]
                 dio.resize(offset + len(data), axis=0)
                 dio[offset:offset + len(data)] = data[:, -1]
                 offset += len(data)
-                end = time.time()
-                print('Time to save h5 file', round(end - start, 6), 's')
         print()
-        print('Stream over, cleaning up h5 file')
+        print('Stream over, closing h5 file')
 
 
 class Stream(mp.Process):
-    def __init__(self, queue, shutdown_event, gui_info) -> None:
+    def __init__(self, queue, shutdown_event, gui_info, cache_size: int = 3) -> None:
+        '''
+        Params:
+            cache_size: how much data to store in memory in seconds. Used for filtering and visualisation.
+                Also used to determine the frequency of dumping data to a file.
+        '''
         super().__init__()
+        self.cache_size = cache_size
         self.queue = queue
         self.gui_info = gui_info
         self.handle = gui_info.labjack
@@ -92,12 +109,24 @@ class Stream(mp.Process):
         print('New scanning rate is:', new_scan_rate)
         lockin = LockIn(self.gui_info.photometry_parameters['freq1'],
                         self.gui_info.photometry_parameters['freq2'],
-                        fs=new_scan_rate, lowpass_cutoff=10)
+                        fs=new_scan_rate, lowpass_cutoff=15)
+
+        n_entries = int(new_scan_rate * self.cache_size / scans_per_read)
+        cache = [None] * n_entries
+        cache_idx = 0
 
         while not self.shutdown_event.is_set():
             data = ljm.eStreamRead(self.handle)[0]
             data = [data[i::n_ports] for i in range(n_ports)]
+            cache[cache_idx % n_entries] = data
+            cache_idx += 1
+            if cache_idx < n_entries:
+                continue
+            # benchmark processing
             start = time.time()
+            concat_data = concatenate(cache)
+            if cache_idx % n_entries == 0:
+                io_queue.put(concat_data)
             rs = lockin(data)
             # re-arrange the data so that digital stream is last
             data = data[:-1] + rs + data[-1:]
@@ -111,11 +140,10 @@ class Stream(mp.Process):
 
 
 class LockIn:
-    def __init__(self, freq1, freq2, fs=3000, bw=60, lowpass_cutoff=5) -> None:
+    def __init__(self, freq1, freq2, fs=3000, bw=60, lowpass_cutoff=15) -> None:
         # set up filters
         bw = bw // 2
-        self.lowpass_sos = signal.ellip(3, 0.1, 40, lowpass_cutoff, fs=fs,
-                                        btype='low', output='sos')
+        self.lowpass_sos = signal.butter(2, lowpass_cutoff, fs=fs, output='sos')
         assert is_filter_stable(self.lowpass_sos)
         self.sos1 = signal.ellip(3, 0.1, 40, [freq1 - bw, freq1 + bw],
                                  btype='bandpass', fs=fs, output='sos')
@@ -123,7 +151,6 @@ class LockIn:
         self.sos2 = signal.ellip(3, 0.1, 40, [freq2 - bw, freq2 + bw],
                                  btype='bandpass', fs=fs, output='sos')
         assert is_filter_stable(self.sos2)
-        # alternative to lowpass ellip is an fir filter
 
     def __call__(self, data) -> np.array:
         # assume data contains all signals from labjack
