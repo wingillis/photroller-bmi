@@ -112,22 +112,19 @@ class Stream(mp.Process):
                         fs=new_scan_rate, lowpass_cutoff=15)
 
         n_entries = int(new_scan_rate * self.cache_size / scans_per_read)
-        cache = [None] * n_entries
-        cache_idx = 0
+        buff = CircularBuffer(n_entries)
 
         while not self.shutdown_event.is_set():
             data = ljm.eStreamRead(self.handle)[0]
             data = [data[i::n_ports] for i in range(n_ports)]
-            cache[cache_idx % n_entries] = data
-            cache_idx += 1
-            if cache_idx < n_entries:
-                continue
+            buff.append(data)
             # benchmark processing
             start = time.time()
-            concat_data = concatenate(cache)
-            if cache_idx % n_entries == 0:
+            concat_data = concatenate(buff)
+            if buff.current_index == 0:
                 io_queue.put(concat_data)
-            rs = lockin(data)
+
+            rs = lockin(concat_data)
             # re-arrange the data so that digital stream is last
             data = data[:-1] + rs + data[-1:]
             end = time.time()
@@ -137,6 +134,26 @@ class Stream(mp.Process):
             self.queue.put(data)
         ljm.eStreamStop(self.handle)
         ljm.close(self.handle)
+
+
+class CircularBuffer():
+    def __init__(self, cache_size=6):
+        self.cache = [None] * cache_size
+        self.cache_size = cache_size
+        self.current_index = 0
+
+    def append(self, __object) -> None:
+        self.cache[self.current_index % self.cache_size] = __object
+        self.current_index = (self.current_index + 1) % self.cache_size
+
+    def __getitem__(self, index):
+        index = self.current_index - self.cache_size + index
+        return self.cache[index % self.cache_size]
+
+    def __iter__(self):
+        return (
+            self[i] for i in range(self.cache_size)
+        )
 
 
 class LockIn:
